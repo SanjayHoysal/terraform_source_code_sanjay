@@ -1,0 +1,85 @@
+provider "aws" {
+  region = var.region
+}
+
+resource "aws_vpc" "main" {
+  cidr_block = var.vpc_cidr
+
+  tags = {
+    Name = "Main VPC"
+  }
+}
+
+resource "aws_subnet" "public" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = var.public_subnet_cidr
+  availability_zone = "ap-south-1a"  # Update as needed
+
+  tags = {
+    Name = "Public Subnet"
+  }
+}
+
+resource "aws_subnet" "private" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = var.private_subnet_cidr
+  availability_zone = "ap-south-1a"  # Update as needed
+
+  tags = {
+    Name = "Private Subnet"
+  }
+}
+
+resource "aws_security_group" "instance" {
+  vpc_id = aws_vpc.main.id
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.allowed_ssh_cidr]
+  }
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = [var.allowed_https_cidr]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "Instance Security Group"
+  }
+}
+
+resource "aws_key_pair" "terraform_ec2_key" {
+  key_name   = var.key_name
+  public_key = file("terraform_ec2_key.pub")  # Ensure this file exists
+}
+
+resource "aws_instance" "web" {
+  ami                    = var.ami
+  instance_type          = var.instance_type
+  key_name               = aws_key_pair.terraform_ec2_key.key_name
+  subnet_id              = aws_subnet.public.id
+  vpc_security_group_ids = [aws_security_group.instance.id]
+
+  tags = {
+    Name = "Web Server"
+  }
+
+  user_data = <<-EOF
+    #!/bin/bash
+    sudo apt update -y
+    sudo apt install apache2 -y
+    sudo systemctl start apache2
+    sudo systemctl enable apache2
+  EOF
+}
